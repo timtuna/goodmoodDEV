@@ -16,8 +16,9 @@ This project combines multiple services to create an automated pipeline for real
 goodmoodDEV/
 ├── streetview-automation/    # Google Street View capture service
 ├── image-processor/          # Image processing service
-├── n8n-workflows/           # Workflow definitions
-├── docs/                    # Documentation
+├── n8n-workflows/           # Production workflow definitions
+│   └── examples/            # Test and example workflows
+├── docs/                    # Project documentation
 └── docker-compose.yml       # Service orchestration
 ```
 
@@ -198,10 +199,10 @@ This approach minimizes the chance of capturing business interior tours.
 
 ## Documentation
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System architecture and design decisions
-- [IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md) - Implementation timeline and changes
-- [N8N_WORKFLOWS.md](./N8N_WORKFLOWS.md) - Workflow documentation
-- [STATUS.md](./STATUS.md) - Current project status
+- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) - System architecture and design decisions
+- [docs/IMPLEMENTATION_SUMMARY.md](./docs/IMPLEMENTATION_SUMMARY.md) - Implementation timeline and changes
+- [docs/N8N_WORKFLOWS.md](./docs/N8N_WORKFLOWS.md) - Workflow documentation
+- [docs/STATUS.md](./docs/STATUS.md) - Current project status
 
 ## Troubleshooting
 
