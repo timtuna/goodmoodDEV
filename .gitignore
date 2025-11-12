@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Data directories
+n8n-data/
+ollama-data/
+postgres-data/
+ai-models/
+
+# Output directories
+streetview-screenshots/
+processed-results/
+image-processor/output/
+
+# Docker volumes
+volumes/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+tmp/
+temp/
+
+# Claude IDE
+.claude/

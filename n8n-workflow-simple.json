@@ -1,0 +1,146 @@
+{
+  "name": "Street View Capture & Analyze (Simple)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "manual-trigger-1"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "address",
+              "value": "Eiffel Tower, Paris, France"
+            }
+          ]
+        }
+      },
+      "name": "Set Address",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "id": "set-address-1"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:3000/capture",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "address",
+              "value": "={{ $json.address }}"
+            },
+            {
+              "name": "headless",
+              "value": true
+            },
+            {
+              "name": "quality",
+              "value": 85
+            }
+          ]
+        }
+      },
+      "name": "Capture Street View",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [680, 300],
+      "id": "http-capture-1"
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "name": "Wait 5s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "webhookId": "wait-1"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/analyze",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "filename",
+              "value": "={{ $json.data.filename }}"
+            },
+            {
+              "name": "analyses",
+              "value": "=[\"description\"]"
+            }
+          ]
+        }
+      },
+      "name": "Analyze Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1120, 300],
+      "id": "http-analyze-1"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Address",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Address": {
+      "main": [
+        [
+          {
+            "node": "Capture Street View",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Street View": {
+      "main": [
+        [
+          {
+            "node": "Wait 5s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5s": {
+      "main": [
+        [
+          {
+            "node": "Analyze Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "pinData": {},
+  "versionId": "1"
+}

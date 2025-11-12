@@ -1,0 +1,201 @@
+{
+  "name": "Street View Screenshot Capture",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "address",
+              "value": "1600 Amphitheatre Parkway, Mountain View, CA"
+            },
+            {
+              "name": "headless",
+              "value": "true"
+            },
+            {
+              "name": "quality",
+              "value": "85"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-parameters",
+      "name": "Set Parameters",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:3000/capture",
+        "authentication": "none",
+        "requestMethod": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\n  \"address\": \"{{ $json.address }}\",\n  \"headless\": {{ $json.headless }},\n  \"quality\": {{ $json.quality }}\n}",
+        "options": {}
+      },
+      "id": "capture-streetview",
+      "name": "Capture Street View",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "image_filename",
+              "value": "={{ $json.data.filename }}"
+            },
+            {
+              "name": "image_path",
+              "value": "={{ $json.data.paths.image }}"
+            },
+            {
+              "name": "address",
+              "value": "={{ $json.data.metadata.address }}"
+            },
+            {
+              "name": "coordinates",
+              "value": "={{ $json.data.metadata.coordinates ? JSON.stringify($json.data.metadata.coordinates) : 'N/A' }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.data.metadata.url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-data",
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "message": "=Screenshot captured successfully!\n\nFilename: {{ $json.image_filename }}\nAddress: {{ $json.address }}\nCoordinates: {{ $json.coordinates }}\nPath: {{ $json.image_path }}",
+        "options": {}
+      },
+      "id": "success-notification",
+      "name": "Success Notification",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1250, 200],
+      "notes": "Replace this with your notification method (email, Slack, Discord, etc.)"
+    },
+    {
+      "parameters": {
+        "message": "=Screenshot capture failed!\n\nError: {{ $json.error || 'Unknown error' }}",
+        "options": {}
+      },
+      "id": "error-notification",
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 400],
+      "notes": "Replace this with your error notification method"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Parameters",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Parameters": {
+      "main": [
+        [
+          {
+            "node": "Capture Street View",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Street View": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Success Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-10T00:00:00.000Z",
+  "versionId": "1"
+}

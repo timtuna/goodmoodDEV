@@ -1,0 +1,97 @@
+{
+  "name": "Street View Capture + Analyze (Working)",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Start",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "id": "manual-trigger-1"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:3000/capture",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"address\": \"Brandenburg Gate, Berlin\",\n  \"headless\": true,\n  \"quality\": 85\n}",
+        "options": {}
+      },
+      "name": "1. Capture Street View",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [460, 300],
+      "id": "http-capture-1"
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "name": "2. Wait for File",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "id": "wait-1"
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/analyze",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"filename\": \"{{ $json.data.filename }}\",\n  \"analyses\": [\"description\"]\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "name": "3. Analyze with AI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [900, 300],
+      "id": "http-analyze-1"
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "1. Capture Street View",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "1. Capture Street View": {
+      "main": [
+        [
+          {
+            "node": "2. Wait for File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Wait for File": {
+      "main": [
+        [
+          {
+            "node": "3. Analyze with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "staticData": null,
+  "tags": []
+}

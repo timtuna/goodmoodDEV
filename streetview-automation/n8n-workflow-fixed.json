@@ -1,0 +1,220 @@
+{
+  "name": "Street View Screenshot Capture (Fixed)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "address-field",
+              "name": "address",
+              "value": "=Brandenburg Gate, Berlin, Germany",
+              "type": "string"
+            },
+            {
+              "id": "headless-field",
+              "name": "headless",
+              "value": true,
+              "type": "boolean"
+            },
+            {
+              "id": "quality-field",
+              "name": "quality",
+              "value": 85,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-address",
+      "name": "Set Address",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:3000/capture",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "address",
+              "value": "={{ $json.address }}"
+            },
+            {
+              "name": "headless",
+              "value": "={{ $json.headless }}"
+            },
+            {
+              "name": "quality",
+              "value": "={{ $json.quality }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "capture-streetview",
+      "name": "Capture Street View",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "filename",
+              "name": "filename",
+              "value": "={{ $json.data.filename }}",
+              "type": "string"
+            },
+            {
+              "id": "coordinates",
+              "name": "coordinates",
+              "value": "={{ $json.data.metadata.coordinates.lat }}, {{ $json.data.metadata.coordinates.lng }}",
+              "type": "string"
+            },
+            {
+              "id": "address",
+              "name": "address",
+              "value": "={{ $json.data.metadata.address }}",
+              "type": "string"
+            },
+            {
+              "id": "captured_at",
+              "name": "captured_at",
+              "value": "={{ $json.data.metadata.capturedAt }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "extract-success-data",
+      "name": "Extract Success Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {},
+      "id": "success-output",
+      "name": "Success",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1250, 200],
+      "notes": "Screenshot captured successfully!"
+    },
+    {
+      "parameters": {},
+      "id": "error-output",
+      "name": "Error",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 400],
+      "notes": "Screenshot capture failed"
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Address",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Address": {
+      "main": [
+        [
+          {
+            "node": "Capture Street View",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Street View": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Extract Success Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Success Data": {
+      "main": [
+        [
+          {
+            "node": "Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-10T18:00:00.000Z",
+  "versionId": "2"
+}
