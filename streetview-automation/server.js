@@ -15,6 +15,48 @@ app.use((req, res, next) => {
   next();
 });
 
+// Serve static files
+app.use('/public', express.static('public'));
+app.use('/screenshots', express.static(OUTPUT_DIR));
+
+// Serve results viewer at root
+app.get('/', (req, res) => {
+  res.sendFile(__dirname + '/public/results-viewer.html');
+});
+
+/**
+ * Helper function to enhance API response with URLs
+ * @param {Object} result - Capture result from captureStreetView
+ * @param {Object} req - Express request object
+ * @returns {Object} Enhanced result with image URLs and viewer link
+ */
+function enhanceResultWithUrls(result, req) {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+  // Single position capture
+  if (!result.multi_position) {
+    return {
+      ...result,
+      image_url: `${baseUrl}/screenshots/${result.filename}`,
+      thumbnail_url: `${baseUrl}/screenshots/${result.filename}`,
+      viewer_url: `${baseUrl}/`
+    };
+  }
+
+  // Multi-position capture
+  const enhancedCaptures = result.captures.map(capture => ({
+    ...capture,
+    image_url: `${baseUrl}/screenshots/${capture.filename}`,
+    thumbnail_url: `${baseUrl}/screenshots/${capture.filename}`
+  }));
+
+  return {
+    ...result,
+    captures: enhancedCaptures,
+    viewer_url: `${baseUrl}/`
+  };
+}
+
 /**
  * Health check endpoint
  */
@@ -133,10 +175,13 @@ app.post('/capture', async (req, res) => {
       street_bearing
     });
 
+    // Enhance response with URLs and viewer link
+    const enhancedResult = enhanceResultWithUrls(result, req);
+
     res.json({
       success: true,
       message: 'Screenshot captured successfully',
-      data: result
+      data: enhancedResult
     });
 
   } catch (error) {

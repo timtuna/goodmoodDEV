@@ -153,7 +153,134 @@ async function validateOutdoorView(page) {
 }
 
 /**
- * Navigate Street View using arrow keys/buttons
+ * Get available panorama links from current Street View position
+ * @param {Object} page - Playwright page object
+ * @returns {Promise<Array>} Array of link objects with { pano, heading, description }
+ */
+async function getPanoramaLinks(page) {
+  console.log('[Panorama Links] Fetching available links...');
+
+  try {
+    const links = await page.evaluate(() => {
+      // Access Google Maps panorama data
+      const panorama = window.panorama || window.gPanorama;
+      if (panorama && panorama.getLinks) {
+        return panorama.getLinks();
+      }
+
+      // Alternative: Check for links in the DOM
+      const linkElements = document.querySelectorAll('[data-pano-id]');
+      if (linkElements.length > 0) {
+        return Array.from(linkElements).map(el => ({
+          pano: el.getAttribute('data-pano-id'),
+          heading: parseFloat(el.getAttribute('data-heading') || '0'),
+          description: el.getAttribute('aria-label') || ''
+        }));
+      }
+
+      return [];
+    });
+
+    console.log(`[Panorama Links] Found ${links.length} links`);
+    return links || [];
+  } catch (error) {
+    console.log(`[Panorama Links] Could not fetch links: ${error.message}`);
+    return [];
+  }
+}
+
+/**
+ * Navigate to adjacent panorama using panorama ID (more reliable than arrow keys)
+ * @param {Object} page - Playwright page object
+ * @param {string} direction - 'forward' or 'back' relative to street bearing
+ * @param {number} streetBearing - Current street direction in degrees
+ * @param {number} clicks - Number of panoramas to traverse
+ * @param {number} heading - Final camera heading to set
+ * @returns {Promise<boolean>} Success status
+ */
+async function navigateWithPanoramaLinks(page, direction, streetBearing, clicks, heading) {
+  console.log(`[Pano Navigation] Moving ${direction} ${clicks} panoramas along street bearing ${streetBearing}°`);
+
+  try {
+    for (let i = 0; i < clicks; i++) {
+      console.log(`[Pano Navigation] Step ${i + 1}/${clicks}`);
+
+      // Get available links from current position
+      const links = await getPanoramaLinks(page);
+
+      if (links.length === 0) {
+        console.log('[Pano Navigation] No links available, falling back to arrow navigation');
+        return false;
+      }
+
+      // Determine target direction based on street bearing and direction
+      const targetHeading = direction === 'forward' ? streetBearing : (streetBearing + 180) % 360;
+
+      // Find the link with heading closest to our target direction
+      let bestLink = null;
+      let smallestDiff = 360;
+
+      links.forEach(link => {
+        const diff = Math.abs(normalizeHeadingDiff(link.heading, targetHeading));
+        if (diff < smallestDiff) {
+          smallestDiff = diff;
+          bestLink = link;
+        }
+      });
+
+      if (!bestLink) {
+        console.log('[Pano Navigation] No suitable link found');
+        return false;
+      }
+
+      console.log(`[Pano Navigation] Selected link: heading ${bestLink.heading}° (${bestLink.description || 'unnamed'})`);
+
+      // Navigate to the selected panorama using setPano()
+      const navigated = await page.evaluate((panoId) => {
+        const panorama = window.panorama || window.gPanorama;
+        if (panorama && panorama.setPano) {
+          panorama.setPano(panoId);
+          return true;
+        }
+        return false;
+      }, bestLink.pano);
+
+      if (!navigated) {
+        console.log('[Pano Navigation] Could not navigate using setPano(), falling back');
+        return false;
+      }
+
+      // Wait for panorama to load
+      await page.waitForTimeout(3000);
+      console.log(`[Pano Navigation] Moved to panorama ${bestLink.pano}`);
+    }
+
+    // Set final camera heading
+    await setStreetViewHeading(page, heading);
+    console.log('[Pano Navigation] Navigation complete');
+    return true;
+
+  } catch (error) {
+    console.log(`[Pano Navigation] Error: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Calculate the smallest angular difference between two headings
+ * @param {number} heading1 - First heading (0-360)
+ * @param {number} heading2 - Second heading (0-360)
+ * @returns {number} Difference in degrees (-180 to 180)
+ */
+function normalizeHeadingDiff(heading1, heading2) {
+  let diff = heading1 - heading2;
+  while (diff > 180) diff -= 360;
+  while (diff < -180) diff += 360;
+  return diff;
+}
+
+/**
+ * Navigate Street View using arrow keys/buttons (fallback method)
  * @param {Object} page - Playwright page object
  * @param {string} direction - 'forward' or 'back'
  * @param {number} clicks - Number of times to click the arrow
@@ -710,7 +837,8 @@ async function captureMultiPosition(options) {
           outdoor_only,
           // Inject coordinates directly (skip geocoding)
           _coords: position.coords,
-          _positionLabel: position.label
+          _positionLabel: position.label,
+          _streetBearing: streetBearing
         };
 
         const result = await captureSinglePosition(singleCaptureOptions);
@@ -769,6 +897,7 @@ async function captureSinglePosition(options) {
     address,
     _coords,
     _positionLabel = '',
+    _streetBearing,
     headless = true,
     quality = 85,
     width = 1920,
@@ -886,14 +1015,25 @@ async function captureSinglePosition(options) {
     // For multi-position: Navigate using arrows instead of coordinates
     // This keeps us on outdoor panoramas instead of snapping to business interiors
     if (_positionLabel && _positionLabel !== 'center') {
-      console.log(`[Capture] Using arrow navigation for ${_positionLabel} position`);
+      console.log(`[Capture] Navigating to ${_positionLabel} position`);
 
       // Determine direction and number of clicks based on position offset
       const direction = _positionLabel === 'left' ? 'back' : 'forward';
-      // Calculate number of arrow clicks (roughly 10-15m per click in street view)
-      const arrowClicks = Math.ceil(position_offset / 12);
+      // Calculate number of steps (roughly 10-15m per panorama)
+      const steps = Math.ceil(position_offset / 15);
 
-      await navigateWithArrows(page, direction, arrowClicks, heading);
+      // Try panorama link navigation first (more reliable)
+      let success = false;
+      if (_streetBearing !== undefined) {
+        console.log(`[Capture] Trying panorama link navigation (street bearing: ${_streetBearing}°)`);
+        success = await navigateWithPanoramaLinks(page, direction, _streetBearing, steps, heading);
+      }
+
+      // Fallback to arrow navigation if panorama links failed
+      if (!success) {
+        console.log(`[Capture] Falling back to arrow navigation`);
+        await navigateWithArrows(page, direction, steps, heading);
+      }
     } else if (_positionLabel === 'center') {
       console.log(`[Capture] Center position - staying at current location`);
       // Just set the heading without navigating

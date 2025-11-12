@@ -1,0 +1,565 @@
+{
+  "name": "Street View Capture & Analysis v2 (Multi-Position Support)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "street-view-capture",
+        "method": "POST",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "notes": "Accept capture parameters via webhook POST"
+    },
+    {
+      "parameters": {
+        "url": "http://streetview-capture:3000/capture",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "address",
+              "value": "={{ $json.body.address }}"
+            },
+            {
+              "name": "headless",
+              "value": "={{ $json.body.headless !== undefined ? $json.body.headless : true }}"
+            },
+            {
+              "name": "quality",
+              "value": "={{ $json.body.quality || 85 }}"
+            },
+            {
+              "name": "width",
+              "value": "={{ $json.body.width || 1920 }}"
+            },
+            {
+              "name": "height",
+              "value": "={{ $json.body.height || 1080 }}"
+            },
+            {
+              "name": "heading",
+              "value": "={{ $json.body.heading }}"
+            },
+            {
+              "name": "pitch",
+              "value": "={{ $json.body.pitch }}"
+            },
+            {
+              "name": "fov",
+              "value": "={{ $json.body.fov }}"
+            },
+            {
+              "name": "outdoor_only",
+              "value": "={{ $json.body.outdoor_only !== undefined ? $json.body.outdoor_only : true }}"
+            },
+            {
+              "name": "multi_position",
+              "value": "={{ $json.body.multi_position || false }}"
+            },
+            {
+              "name": "position_offset",
+              "value": "={{ $json.body.position_offset }}"
+            },
+            {
+              "name": "street_bearing",
+              "value": "={{ $json.body.street_bearing }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "capture-api",
+      "name": "Call Capture API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300],
+      "notes": "POST to streetview-capture service with all parameters"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.success }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-success",
+      "name": "Capture Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "notes": "Check if capture API succeeded"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.data.multi_position === true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-multi-position",
+      "name": "Multi-Position?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [850, 200],
+      "notes": "Route to loop if multi-position, else direct analysis"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "filename",
+              "value": "={{ $json.data.filename }}"
+            },
+            {
+              "name": "address",
+              "value": "={{ $json.data.metadata.address }}"
+            },
+            {
+              "name": "position",
+              "value": "single"
+            }
+          ],
+          "object": [
+            {
+              "name": "metadata",
+              "value": "={{ $json.data.metadata }}"
+            }
+          ]
+        }
+      },
+      "id": "extract-single",
+      "name": "Extract Single Image",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [1050, 300],
+      "notes": "Extract filename from single-position capture"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split the captures array into individual items\nconst data = $input.first().json;\nconst captures = data.data.captures || [];\n\nreturn captures.map(capture => ({\n  json: {\n    filename: capture.filename,\n    position: capture.position,\n    address: data.data.target_address,\n    heading: capture.heading,\n    coordinates: capture.coordinates,\n    metadata: capture.metadata,\n    description: capture.description,\n    success: capture.success\n  }\n}));"
+      },
+      "id": "split-captures",
+      "name": "Split Captures Array",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 100],
+      "notes": "Split captures array into individual items for processing"
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "wait-file",
+      "name": "Wait for File",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1450, 200],
+      "notes": "Ensure image file is written to disk"
+    },
+    {
+      "parameters": {
+        "url": "http://image-processor:5000/analyze",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "filename",
+              "value": "={{ $json.filename }}"
+            },
+            {
+              "name": "analyses",
+              "value": "={{ $json.analyses || ['description', 'object_detection'] }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "analyze-image",
+      "name": "Analyze Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1650, 200],
+      "notes": "Call image-processor for AI analysis"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.image_id !== undefined }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "check-analysis",
+      "name": "Analysis Success?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1850, 200],
+      "notes": "Check if analysis succeeded"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "success"
+            },
+            {
+              "name": "filename",
+              "value": "={{ $json.filename }}"
+            },
+            {
+              "name": "position",
+              "value": "={{ $node[\"Wait for File\"].json.position }}"
+            },
+            {
+              "name": "address",
+              "value": "={{ $node[\"Wait for File\"].json.address }}"
+            },
+            {
+              "name": "model",
+              "value": "={{ $json.model }}"
+            }
+          ],
+          "number": [
+            {
+              "name": "image_id",
+              "value": "={{ $json.image_id }}"
+            },
+            {
+              "name": "processing_time_ms",
+              "value": "={{ $json.processing_time_ms }}"
+            }
+          ],
+          "object": [
+            {
+              "name": "analysis_results",
+              "value": "={{ $json.results }}"
+            },
+            {
+              "name": "capture_metadata",
+              "value": "={{ $node[\"Wait for File\"].json.metadata }}"
+            }
+          ]
+        }
+      },
+      "id": "format-success",
+      "name": "Format Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [2050, 100],
+      "notes": "Combine capture and analysis results"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "error"
+            },
+            {
+              "name": "error_type",
+              "value": "analysis_failed"
+            },
+            {
+              "name": "filename",
+              "value": "={{ $node[\"Wait for File\"].json.filename }}"
+            },
+            {
+              "name": "position",
+              "value": "={{ $node[\"Wait for File\"].json.position }}"
+            }
+          ],
+          "object": [
+            {
+              "name": "error_details",
+              "value": "={{ $json }}"
+            }
+          ]
+        }
+      },
+      "id": "analysis-error",
+      "name": "Analysis Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [2050, 300],
+      "notes": "Handle analysis failure"
+    },
+    {
+      "parameters": {},
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2450, 100],
+      "notes": "Collect all multi-position analysis results"
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "status",
+              "value": "error"
+            },
+            {
+              "name": "error_message",
+              "value": "Capture failed"
+            },
+            {
+              "name": "address",
+              "value": "={{ $node[\"Webhook Trigger\"].json.body.address }}"
+            }
+          ],
+          "object": [
+            {
+              "name": "error_details",
+              "value": "={{ $json }}"
+            }
+          ]
+        }
+      },
+      "id": "capture-error",
+      "name": "Capture Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [850, 400],
+      "notes": "Handle capture failure"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll"
+      },
+      "id": "final-merge",
+      "name": "Final Response",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [2650, 200],
+      "notes": "Merge all paths for final response"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2850, 200],
+      "notes": "Return results to webhook caller"
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Call Capture API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Capture API": {
+      "main": [
+        [
+          {
+            "node": "Capture Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Success?": {
+      "main": [
+        [
+          {
+            "node": "Multi-Position?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Capture Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Multi-Position?": {
+      "main": [
+        [
+          {
+            "node": "Split Captures Array",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Single Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Single Image": {
+      "main": [
+        [
+          {
+            "node": "Wait for File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Captures Array": {
+      "main": [
+        [
+          {
+            "node": "Wait for File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for File": {
+      "main": [
+        [
+          {
+            "node": "Analyze Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Image": {
+      "main": [
+        [
+          {
+            "node": "Analysis Success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Success?": {
+      "main": [
+        [
+          {
+            "node": "Format Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Analysis Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Success": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Error": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Capture Error": {
+      "main": [
+        [
+          {
+            "node": "Final Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Response": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-12T00:00:00.000Z",
+  "versionId": "2"
+}
