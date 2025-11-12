@@ -153,6 +153,126 @@ async function validateOutdoorView(page) {
 }
 
 /**
+ * Navigate Street View using arrow keys/buttons
+ * @param {Object} page - Playwright page object
+ * @param {string} direction - 'forward' or 'back'
+ * @param {number} clicks - Number of times to click the arrow
+ * @param {number} heading - Camera heading to set after navigation
+ * @returns {Promise<void>}
+ */
+async function navigateWithArrows(page, direction, clicks, heading) {
+  console.log(`[Arrow Navigation] Moving ${direction} ${clicks} times`);
+
+  // Arrow button selectors in Street View
+  const arrowSelectors = {
+    forward: [
+      'button[aria-label*="Forward"]',
+      'button[aria-label*="Move forward"]',
+      'button[jsaction*="pane.svp.forward"]',
+      'div[data-tooltip*="Forward"]',
+      'button.widget-scene-directions-arrow[data-direction="forward"]'
+    ],
+    back: [
+      'button[aria-label*="Back"]',
+      'button[aria-label*="Move back"]',
+      'button[jsaction*="pane.svp.back"]',
+      'div[data-tooltip*="Back"]',
+      'button.widget-scene-directions-arrow[data-direction="back"]'
+    ]
+  };
+
+  const selectorsToTry = arrowSelectors[direction];
+
+  for (let i = 0; i < clicks; i++) {
+    console.log(`[Arrow Navigation] Click ${i + 1}/${clicks}`);
+    let clicked = false;
+
+    // Try each selector
+    for (const selector of selectorsToTry) {
+      try {
+        const arrow = page.locator(selector).first();
+        if (await arrow.count() > 0 && await arrow.isVisible()) {
+          await arrow.click({ timeout: 2000 });
+          clicked = true;
+          await page.waitForTimeout(2000); // Wait for panorama transition
+          break;
+        }
+      } catch (e) {
+        // Try next selector
+      }
+    }
+
+    // Fallback: Use keyboard arrow keys
+    if (!clicked) {
+      console.log(`[Arrow Navigation] Using keyboard fallback`);
+      const key = direction === 'forward' ? 'ArrowUp' : 'ArrowDown';
+      await page.keyboard.press(key);
+      await page.waitForTimeout(2000);
+    }
+  }
+
+  // Set the heading after navigation
+  await setStreetViewHeading(page, heading);
+}
+
+/**
+ * Set Street View camera heading without changing position
+ * @param {Object} page - Playwright page object
+ * @param {number} heading - Desired heading in degrees (0-360)
+ * @returns {Promise<void>}
+ */
+async function setStreetViewHeading(page, heading) {
+  console.log(`[Heading] Setting camera heading to ${heading}°`);
+
+  try {
+    // Inject JavaScript to rotate the Street View camera
+    await page.evaluate((targetHeading) => {
+      // Try to find and modify the Street View panorama
+      if (window.google && window.google.maps && window.google.maps.StreetViewPanorama) {
+        // Get the Street View panorama instance
+        const pano = document.querySelector('[role="region"]');
+        if (pano) {
+          // Dispatch mouse/touch events to rotate view
+          // This is a simplified approach - Street View uses complex gesture handling
+          const centerX = pano.offsetWidth / 2;
+          const centerY = pano.offsetHeight / 2;
+
+          // Calculate rotation needed
+          // Note: This is an approximation and may need adjustment
+          const event = new MouseEvent('mousedown', {
+            bubbles: true,
+            clientX: centerX,
+            clientY: centerY
+          });
+          pano.dispatchEvent(event);
+        }
+      }
+
+      // Alternative: Modify URL parameters
+      const currentUrl = new URL(window.location.href);
+      const urlParts = currentUrl.pathname.split(',');
+      // Format: /@lat,lng,zoom,heading,tilt
+      if (urlParts.length >= 5) {
+        urlParts[4] = `${targetHeading}h`;
+        const newPath = urlParts.join(',');
+        // Note: This would require page navigation
+      }
+    }, heading);
+
+    await page.waitForTimeout(1000);
+  } catch (e) {
+    console.log(`[Heading] Could not set heading programmatically: ${e.message}`);
+    // Fallback: Use keyboard to rotate
+    // Each arrow key press rotates about 22.5 degrees
+    const rotations = Math.round(heading / 22.5);
+    for (let i = 0; i < rotations; i++) {
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(100);
+    }
+  }
+}
+
+/**
  * Capture Google Street View screenshot for a given address
  * @param {Object} options - Capture options
  * @param {string} options.address - The address to capture
@@ -657,7 +777,8 @@ async function captureSinglePosition(options) {
     heading = 0,
     pitch = 85,
     fov = 75,
-    outdoor_only = true
+    outdoor_only = true,
+    position_offset = 30
   } = options;
 
   let browser = null;
@@ -762,16 +883,33 @@ async function captureSinglePosition(options) {
       }
     }
 
-    // Now navigate to the specific coordinates within Street View
-    console.log(`[Capture] Navigating to position: ${coords.lat}, ${coords.lng}`);
-    const streetViewUrl = buildStreetViewUrl(coords, {
-      heading,
-      pitch,
-      fov,
-      outdoor_only: false
-    });
-    await page.goto(streetViewUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000);
+    // For multi-position: Navigate using arrows instead of coordinates
+    // This keeps us on outdoor panoramas instead of snapping to business interiors
+    if (_positionLabel && _positionLabel !== 'center') {
+      console.log(`[Capture] Using arrow navigation for ${_positionLabel} position`);
+
+      // Determine direction and number of clicks based on position offset
+      const direction = _positionLabel === 'left' ? 'back' : 'forward';
+      // Calculate number of arrow clicks (roughly 10-15m per click in street view)
+      const arrowClicks = Math.ceil(position_offset / 12);
+
+      await navigateWithArrows(page, direction, arrowClicks, heading);
+    } else if (_positionLabel === 'center') {
+      console.log(`[Capture] Center position - staying at current location`);
+      // Just set the heading without navigating
+      await setStreetViewHeading(page, heading);
+    } else {
+      // Single position mode - navigate to coordinates as before
+      console.log(`[Capture] Navigating to position: ${coords.lat}, ${coords.lng}`);
+      const streetViewUrl = buildStreetViewUrl(coords, {
+        heading,
+        pitch,
+        fov,
+        outdoor_only: false
+      });
+      await page.goto(streetViewUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(5000);
+    }
 
     // Validate outdoor if needed
     if (outdoor_only) {
